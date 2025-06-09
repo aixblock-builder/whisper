@@ -78,6 +78,11 @@ from function_ml import connect_project, download_dataset, upload_checkpoint
 from logging_class import start_queue, write_log
 from prompt import qa_without_context
 import gc
+import torch
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+from datasets import load_dataset
+import requests
+
 
 # ------------------------------------------------------------------------------
 hf_token = os.getenv("HF_TOKEN", "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")
@@ -555,7 +560,7 @@ class MyModel(AIxBlockMLBase):
 
         elif command.lower() == "predict":
             prompt = kwargs.get("prompt", None)
-            model_id = kwargs.get("model_id", "google/gemma-3-4b-it")
+            model_id = kwargs.get("model_id", "openai/whisper-large-v3")
             text = kwargs.get("text", None)
             token_length = kwargs.get("token_lenght", 30)
             task = kwargs.get("task", "")
@@ -564,6 +569,45 @@ class MyModel(AIxBlockMLBase):
             temperature = kwargs.get("temperature", 0.7)
             top_k = kwargs.get("top_k", 50)
             top_p = kwargs.get("top_p", 0.95)
+            audio_input = kwargs.get("audio_input", "")
+
+            from urllib.parse import urlparse
+            import re
+            import base64
+
+            def is_base64(s):
+                try:
+                    # Kiểm tra nếu có tiền tố "data:audio", loại bỏ phần đầu
+                    if s.startswith("data:audio"):
+                        s = s.split(",")[1]
+                    # Thử decode base64
+                    base64.b64decode(s, validate=True)
+                    return True
+                except Exception:
+                    return False
+
+            def handle_audio_input(audio_input, save_dir="audios"):
+                os.makedirs(save_dir, exist_ok=True)
+                
+                if is_base64(audio_input):
+                    # Nếu là base64
+                    if audio_input.startswith("data:audio"):
+                        audio_input = audio_input.split(",")[1]
+                    audio_bytes = base64.b64decode(audio_input)
+                    audio_path = os.path.join(save_dir, "input_audio.wav")
+                    with open(audio_path, "wb") as f:
+                        f.write(audio_bytes)
+                else:
+                    # Nếu là URL
+                    response = requests.get(audio_input)
+                    audio_path = os.path.join(save_dir, "input_audio.wav")
+                    with open(audio_path, "wb") as f:
+                        f.write(response.content)
+
+                return audio_path
+            
+            audio_path = handle_audio_input(audio_input)
+            print("Audio saved at:", audio_path)
 
             predictions = []
 
@@ -573,56 +617,43 @@ class MyModel(AIxBlockMLBase):
             from huggingface_hub import login 
             hf_access_token = kwargs.get("hf_access_token", "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")
             login(token = hf_access_token)
-            
-            def smart_pipeline(model_id: str, token: str, local_dir="./data/checkpoint", task="text-generation"):
-                try:
-                    import os
-                    model_name = model_id.split("/")[-1]
-                    local_model_dir = os.path.join(local_dir, model_name)
 
-                    # Kiểm tra xem model đã có local chưa
-                    if os.path.exists(local_model_dir) and os.path.exists(os.path.join(local_model_dir, "config.json")):
-                        print(f"✅ Loading model from local: {local_model_dir}")
-                        model_source = local_model_dir
-                    else:
-                        print(f"☁️ Loading model from HuggingFace Hub: {model_id}")
-                        model_source = model_id
-                except:
-                    print(f"☁️ Loading model from HuggingFace Hub: {model_id}")
-                    model_source = model_id
+            device = "cuda:0" if torch.cuda.is_available() else "cpu"
+            torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-                # Xác định dtype và device
-                if torch.cuda.is_available():
-                    if torch.cuda.is_bf16_supported():
-                        dtype = torch.bfloat16
-                    else:
-                        dtype = torch.float16
 
-                    print("Using CUDA.")
-                    pipe = pipeline(
-                        task,
-                        model=model_source,
-                        torch_dtype=dtype,
-                        device_map="auto",
-                        token=token,
-                        max_new_tokens=256
-                    )
-                else:
-                    print("Using CPU.")
-                    pipe = pipeline(
-                        task,
-                        model=model_source,
-                        device_map="cpu",
-                        token=token,
-                        max_new_tokens=256
-                    )
+            model = AutoModelForSpeechSeq2Seq.from_pretrained(
+                model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+            )
+            model.to(device)
 
-                return pipe
+            processor = AutoProcessor.from_pretrained(model_id)
 
-            _model = smart_pipeline(model_id, hf_access_token)
-            generated_text = qa_without_context(_model, prompt)
-        
+            pipe = pipeline(
+                "automatic-speech-recognition",
+                model=model,
+                tokenizer=processor.tokenizer,
+                feature_extractor=processor.feature_extractor,
+                torch_dtype=torch_dtype,
+                device=device,
+            )
+
+            waveform, sample_rate = torchaudio.load(audio_path)
+
+            # Mono hóa nếu cần
+            if waveform.shape[0] > 1:
+                waveform = waveform.mean(dim=0, keepdim=True)
+
+            # Tạo sample dict đúng chuẩn
+            sample = {
+                "array": waveform.squeeze().numpy(),
+                "sampling_rate": sample_rate
+            }
+
+            result = pipe(sample, return_timestamps=True)
+            generated_text = result["text"]
             print(generated_text)
+
             predictions.append({
                 'result': [{
                     'from_name': "generated_text",
