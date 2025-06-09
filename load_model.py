@@ -1,44 +1,25 @@
-import os
-
 import torch
-from huggingface_hub import HfFolder
-from transformers import pipeline
-
-# Đặt token của bạn vào đây
-hf_token = os.getenv("HF_TOKEN", "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")
-# Lưu token vào local
-HfFolder.save_token(hf_token)
-
-from huggingface_hub import login
-
-login(token=hf_token)
-model_id = "google/gemma-3-4b-it"
+from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+from datasets import load_dataset
 
 
-def load():
-    if torch.cuda.is_available():
-        if torch.cuda.is_bf16_supported():
-            dtype = torch.bfloat16
-        else:
-            dtype = torch.float16
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
+torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-        print("CUDA is available.")
+model_id = "openai/whisper-large-v3"
 
-        _model = pipeline(
-            "text-generation",
-            model=model_id,
-            torch_dtype=dtype,
-            device_map="auto",
-            max_new_tokens=256,
-        )
-    else:
-        print("No GPU available, using CPU.")
-        _model = pipeline(
-            "text-generation",
-            model=model_id,
-            device_map="auto",
-            max_new_tokens=256,
-        )
+model = AutoModelForSpeechSeq2Seq.from_pretrained(
+    model_id, torch_dtype=torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
+)
+model.to(device)
 
+processor = AutoProcessor.from_pretrained(model_id)
 
-load()
+pipe = pipeline(
+    "automatic-speech-recognition",
+    model=model,
+    tokenizer=processor.tokenizer,
+    feature_extractor=processor.feature_extractor,
+    torch_dtype=torch_dtype,
+    device=device,
+)
