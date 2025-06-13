@@ -608,6 +608,7 @@ class MyModel(AIxBlockMLBase):
                 return audio_path
             
             input_datas = json.loads(raw_input)
+            print(input_datas)
 
             from huggingface_hub import login 
             hf_access_token = kwargs.get("hf_access_token", "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")
@@ -637,8 +638,9 @@ class MyModel(AIxBlockMLBase):
             list_result = []
 
             for input_data in input_datas:
+                print(input_data)
                 try:
-                    audio_path = handle_audio_input(input_data)
+                    audio_path = handle_audio_input(input_data["data"])
                     print("Audio saved at:", audio_path)
 
                     if not prompt or prompt == "":
@@ -661,9 +663,9 @@ class MyModel(AIxBlockMLBase):
                     }
                     print(generated_text)
                     list_result.append(generated_text)
-                except:
-                    pass
-                    
+                except Exception as e:
+                    print(e)
+
                 print(list_result)
                 
             
