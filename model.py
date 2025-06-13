@@ -570,6 +570,7 @@ class MyModel(AIxBlockMLBase):
             top_k = kwargs.get("top_k", 50)
             top_p = kwargs.get("top_p", 0.95)
             audio_input = kwargs.get("audio_input", "")
+            raw_input = kwargs.get("input", None)
 
             from urllib.parse import urlparse
             import re
@@ -606,13 +607,7 @@ class MyModel(AIxBlockMLBase):
 
                 return audio_path
             
-            audio_path = handle_audio_input(audio_input)
-            print("Audio saved at:", audio_path)
-
-            predictions = []
-
-            if not prompt or prompt == "":
-                prompt = text
+            input_datas = json.loads(raw_input)
 
             from huggingface_hub import login 
             hf_access_token = kwargs.get("hf_access_token", "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")
@@ -638,33 +633,51 @@ class MyModel(AIxBlockMLBase):
                 device=device,
             )
 
-            waveform, sample_rate = torchaudio.load(audio_path)
+            predictions = []
+            list_result = []
 
-            # Mono hóa nếu cần
-            if waveform.shape[0] > 1:
-                waveform = waveform.mean(dim=0, keepdim=True)
+            for input_data in input_datas:
+                try:
+                    audio_path = handle_audio_input(input_data)
+                    print("Audio saved at:", audio_path)
 
-            # Tạo sample dict đúng chuẩn
-            sample = {
-                "array": waveform.squeeze().numpy(),
-                "sampling_rate": sample_rate
-            }
+                    if not prompt or prompt == "":
+                        prompt = text
 
-            result = pipe(sample, return_timestamps=True)
-            generated_text = result["text"]
-            print(generated_text)
+                    waveform, sample_rate = torchaudio.load(audio_path)
 
-            predictions.append({
-                'result': [{
-                    'from_name': "generated_text",
-                    'to_name': "text_output",
-                    'type': 'textarea',
-                    'value': {
-                        'text': [generated_text]
+                    # Mono hóa nếu cần
+                    if waveform.shape[0] > 1:
+                        waveform = waveform.mean(dim=0, keepdim=True)
+
+                    sample = {
+                        "array": waveform.squeeze().numpy(),
+                        "sampling_rate": sample_rate
                     }
-                }],
-                'model_version': ""
-            })
+
+                    result = pipe(sample, return_timestamps=True)
+                    generated_text = {
+                        input_data["name"]: result["text"]
+                    }
+                    print(generated_text)
+                    list_result.append(generated_text)
+                except:
+                    pass
+                    
+                print(list_result)
+                
+            
+            predictions.append({
+                    'result': [{
+                        'from_name': "generated_text",
+                        'to_name': "text_output",
+                        'type': 'textarea',
+                        'value': {
+                            'text': [list_result]
+                        }
+                    }],
+                    'model_version': ""
+                })
 
             return {"message": "predict completed successfully", "result": predictions}
 
