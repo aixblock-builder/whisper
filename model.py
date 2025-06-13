@@ -82,6 +82,7 @@ import torch
 from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 from datasets import load_dataset
 import requests
+import torchaudio
 
 
 # ------------------------------------------------------------------------------
