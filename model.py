@@ -611,6 +611,10 @@ class MyModel(AIxBlockMLBase):
             input_datas = json.loads(raw_input)
             print(input_datas)
 
+            if not input_datas:
+                input_data = prompt
+
+
             from huggingface_hub import login 
             hf_access_token = kwargs.get("hf_access_token", "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")
             login(token = hf_access_token)
