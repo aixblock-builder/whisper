@@ -612,7 +612,10 @@ class MyModel(AIxBlockMLBase):
             print(input_datas)
 
             if not input_datas:
-                input_datas = prompt
+                input_datas = {
+                    "name": "Result",
+                    "data": prompt
+                }
 
 
             from huggingface_hub import login 
