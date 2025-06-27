@@ -615,9 +615,8 @@ class MyModel(AIxBlockMLBase):
                 }
 
 
-            from huggingface_hub import login 
             hf_access_token = kwargs.get("hf_access_token", "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")
-            login(token = hf_access_token)
+            # login(token = hf_access_token)
 
             device = "cuda:0" if torch.cuda.is_available() else "cpu"
             torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
@@ -767,12 +766,7 @@ class MyModel(AIxBlockMLBase):
         Project ID: {project_id}
         """
         )
-        from huggingface_hub import login
 
-        hf_access_token = kwargs.get(
-            "hf_access_token", "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"
-        )
-        login(token=hf_access_token)
         MAX_INPUT_TOKEN_LENGTH = int(os.getenv("MAX_INPUT_TOKEN_LENGTH", "4096"))
 
         DESCRIPTION = """\
